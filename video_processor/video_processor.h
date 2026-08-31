@@ -1,0 +1,4 @@
+#ifndef VIDEO_PROCESSOR_H_
+#define VIDEO_PROCESSOR_H_
+
+#endif // VIDEO_PROCESSOR_H_
