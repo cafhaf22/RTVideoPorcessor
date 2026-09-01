@@ -8,12 +8,17 @@
 #include <sys/stat.h>
 
 PosixSharedMemoryReader::PosixSharedMemoryReader(const std::string& shm_name)
-    : shm_name_(shm_name), map_(nullptr), total_size_(0), connected_(false) {
+    : shm_name_(shm_name), sem_name_("/derq_challenge_sem"), map_(nullptr), 
+    total_size_(0), connected_(false), sem_(nullptr) {
 }
 
 PosixSharedMemoryReader::~PosixSharedMemoryReader() {
     if (map_ != nullptr && map_ != MAP_FAILED) {
         munmap(map_, total_size_);
+    }
+
+    if (sem_ != nullptr && sem_ != SEM_FAILED) {
+        sem_close(sem_);
     }
 }
 
@@ -32,6 +37,7 @@ Status PosixSharedMemoryReader::Connect() {
     struct stat shm_stat;
     if (fstat(shm_fd, &shm_stat) == -1) {
         syslog(LOG_ERR, "fstat error");
+        close(shm_fd);
         return Status::SharedMemoryError;
     }
     total_size_ = shm_stat.st_size; 
@@ -40,10 +46,17 @@ Status PosixSharedMemoryReader::Connect() {
     if(map_ == MAP_FAILED)
     {
         syslog(LOG_ERR, "mmap failed");
+        close(shm_fd);
         return Status::SharedMemoryError;
     }
     close(shm_fd);
     
+    sem_ = sem_open(sem_name_.c_str(), 0);
+    if (sem_ == SEM_FAILED) {
+        syslog(LOG_ERR, "sem_open failed for %s", sem_name_.c_str());
+        return Status::SharedMemoryError;
+    }
+
     connected_ = true;
     syslog(LOG_INFO, "Connected to shared memory space");
     return Status::OK;
@@ -64,9 +77,10 @@ Status PosixSharedMemoryReader::ReadFrame(vFrameData_t& out_frame_data,
     if(!connected_) {
         return Status::SharedMemoryError;
     }
-
+    sem_wait(sem_);
     std::memcpy(&out_frame_data, GetFrameDataPtr(), sizeof(vFrameData_t));
     std::memcpy(out_pixel_buffer, GetPixelBufferPtr(), buffer_size);
+    sem_post(sem_);
     return Status::OK;
 }
 

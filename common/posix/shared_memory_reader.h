@@ -2,11 +2,12 @@
 #define POSIX_SHARED_MEMORY_READER_H_
 
 #include <string>
+#include <semaphore.h>
 #include "common/ishared_memory_reader.h"
 
 class PosixSharedMemoryReader : public ISharedMemoryReader {
 public:
-    PosixSharedMemoryReader(const std::string& shm_name);
+    explicit PosixSharedMemoryReader(const std::string& shm_name);
     ~PosixSharedMemoryReader() override;
 
     PosixSharedMemoryReader(const PosixSharedMemoryReader&) = delete;
@@ -25,9 +26,11 @@ private:
     uint8_t* GetPixelBufferPtr() const;
 
     std::string shm_name_;
+    std::string sem_name_;
     void* map_;
     size_t total_size_;
     bool connected_;
+    sem_t* sem_;
 };
 
 #endif // POSIX_SHARED_MEMORY_READER_H_
