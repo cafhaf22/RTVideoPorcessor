@@ -23,7 +23,8 @@ PosixSharedMemoryWriter::~PosixSharedMemoryWriter() {
 Status PosixSharedMemoryWriter::Initialize(const vHeader_t& header) {
     if(initialized_)
     {
-        return Status::SharedMemoryError;
+        syslog(LOG_WARNING, "Shared memory space already exists");
+        return Status::OK;
     }
     
     total_size_ = sizeof(vHeader_t) + sizeof(vFrameData_t) + header.frame_size_bytes;
@@ -49,6 +50,7 @@ Status PosixSharedMemoryWriter::Initialize(const vHeader_t& header) {
 
     std::memcpy(map_, &header, sizeof(header));
     initialized_ = true;
+     syslog(LOG_INFO, "Shared memory space created");
 
     return Status::OK;
 }

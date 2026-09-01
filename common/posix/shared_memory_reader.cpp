@@ -20,7 +20,7 @@ PosixSharedMemoryReader::~PosixSharedMemoryReader() {
 Status PosixSharedMemoryReader::Connect() {
     if(connected_) {
         syslog(LOG_WARNING, "Shared memory space is connected");
-        return Status::SharedMemoryWarning;
+        return Status::OK;
     }
 
     int32_t shm_fd = shm_open(shm_name_.c_str(), O_RDONLY, 0666);
@@ -45,6 +45,7 @@ Status PosixSharedMemoryReader::Connect() {
     close(shm_fd);
     
     connected_ = true;
+    syslog(LOG_INFO, "Connected to shared memory space");
     return Status::OK;
 }
 
