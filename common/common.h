@@ -15,7 +15,7 @@ enum class Status {
 struct vHeader_t {
     uint16_t width;
     uint16_t height;
-    uint8_t fps;
+    double fps;
     uint32_t frame_size_bytes;
 };
 
