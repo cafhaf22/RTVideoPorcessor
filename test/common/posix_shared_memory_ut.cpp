@@ -23,7 +23,7 @@ protected:
     void SetUp() override {
         test_header_.width = 128;
         test_header_.height = 64;
-        test_header_.fps = 30;
+        test_header_.fps = 30.0;
         test_header_.frame_size_bytes = test_header_.width * test_header_.height * kChannels;
         
         test_frame_.frame_number = 10;
