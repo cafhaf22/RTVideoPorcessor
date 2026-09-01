@@ -1,2 +1,2 @@
 add_library(common_interfaces INTERFACE)
-target_include_directories(common_interfaces INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(common_interfaces INTERFACE ${CMAKE_SOURCE_DIR})
