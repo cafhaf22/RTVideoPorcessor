@@ -1,0 +1,5 @@
+add_executable(test_shared_memory posix_shared_memory_ut.cpp)
+target_link_libraries(test_shared_memory PRIVATE posix_shared_memory GTest::gtest_main)
+
+include(GoogleTest)
+gtest_discover_tests(test_shared_memory)
