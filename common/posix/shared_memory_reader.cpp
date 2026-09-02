@@ -4,12 +4,14 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <cstring>
+#include <ctime>
 #include <syslog.h>
 #include <sys/stat.h>
 
 PosixSharedMemoryReader::PosixSharedMemoryReader(const std::string& shm_name)
-    : shm_name_(shm_name), sem_name_("/derq_challenge_sem"), map_(nullptr), 
-    total_size_(0), connected_(false), sem_(nullptr) {
+    : shm_name_(shm_name), sem_name_("/derq_challenge_sem"), notify_ready_sem_name_("/notify_ready_sem"), 
+    map_(nullptr), total_size_(0), connected_(false), sem_(nullptr), 
+    notify_ready_sem_(nullptr) {
 }
 
 PosixSharedMemoryReader::~PosixSharedMemoryReader() {
@@ -19,6 +21,10 @@ PosixSharedMemoryReader::~PosixSharedMemoryReader() {
 
     if (sem_ != nullptr && sem_ != SEM_FAILED) {
         sem_close(sem_);
+    }
+
+    if(notify_ready_sem_ != nullptr && notify_ready_sem_ != SEM_FAILED) {
+        sem_close(notify_ready_sem_);
     }
 }
 
@@ -57,6 +63,12 @@ Status PosixSharedMemoryReader::Connect() {
         return Status::SharedMemoryError;
     }
 
+    notify_ready_sem_ = sem_open(notify_ready_sem_name_.c_str(), 0);
+    if(notify_ready_sem_ == SEM_FAILED) {
+        syslog(LOG_ERR, "sem_open failed for %s", notify_ready_sem_name_.c_str());
+        return Status::SharedMemoryError;
+    }
+
     connected_ = true;
     syslog(LOG_INFO, "Connected to shared memory space");
     return Status::OK;
@@ -77,6 +89,19 @@ Status PosixSharedMemoryReader::ReadFrame(vFrameData_t& out_frame_data,
     if(!connected_) {
         return Status::SharedMemoryError;
     }
+
+    struct timespec timeout;
+    clock_gettime(CLOCK_REALTIME, &timeout);
+    timeout.tv_nsec += 200000000;  // 200ms 
+    if (timeout.tv_nsec >= 1000000000) {
+        timeout.tv_sec += 1;
+        timeout.tv_nsec -= 1000000000;
+    }
+
+    if (sem_timedwait(notify_ready_sem_, &timeout) == -1) {
+        return Status::Timeout;
+    }
+
     sem_wait(sem_);
     std::memcpy(&out_frame_data, GetFrameDataPtr(), sizeof(vFrameData_t));
     std::memcpy(out_pixel_buffer, GetPixelBufferPtr(), buffer_size);

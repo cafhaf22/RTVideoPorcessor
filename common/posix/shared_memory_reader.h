@@ -27,10 +27,12 @@ private:
 
     std::string shm_name_;
     std::string sem_name_;
+    std::string notify_ready_sem_name_;
     void* map_;
     size_t total_size_;
     bool connected_;
     sem_t* sem_;
+    sem_t* notify_ready_sem_;
 };
 
 #endif // POSIX_SHARED_MEMORY_READER_H_

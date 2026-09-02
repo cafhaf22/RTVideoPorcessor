@@ -7,22 +7,28 @@
 #include <syslog.h>
 
 PosixSharedMemoryWriter::PosixSharedMemoryWriter(const std::string& shm_name)
-    : shm_name_(shm_name), sem_name_("/derq_challenge_sem"), map_(nullptr), 
-    total_size_(0), initialized_(false), sem_(nullptr) {
+    : shm_name_(shm_name), sem_name_("/derq_challenge_sem"), notify_ready_sem_name_("/notify_ready_sem"), 
+    map_(nullptr), total_size_(0), initialized_(false), sem_(nullptr), 
+    notify_ready_sem_(nullptr) {
 }
 
 PosixSharedMemoryWriter::~PosixSharedMemoryWriter() {
-    if (map_ != nullptr && map_ != MAP_FAILED) {
+    if(map_ != nullptr && map_ != MAP_FAILED) {
         munmap(map_, total_size_);
     }
     
-    if (sem_ != nullptr && sem_ != SEM_FAILED) {
+    if(sem_ != nullptr && sem_ != SEM_FAILED) {
         sem_close(sem_);
     }
 
-    if (initialized_) {
+    if(notify_ready_sem_ != nullptr && notify_ready_sem_ != SEM_FAILED) {
+        sem_close(notify_ready_sem_);
+    }
+
+    if(initialized_) {
         shm_unlink(shm_name_.c_str());
         sem_unlink(sem_name_.c_str());
+        sem_unlink(notify_ready_sem_name_.c_str());
     }
 }
 
@@ -36,12 +42,12 @@ Status PosixSharedMemoryWriter::Initialize(const vHeader_t& header) {
     total_size_ = sizeof(vHeader_t) + sizeof(vFrameData_t) + header.frame_size_bytes;
     
     int32_t shm_fd = shm_open(shm_name_.c_str(), O_CREAT | O_RDWR, 0666);
-    if (shm_fd == -1) {
+    if(shm_fd == -1) {
         syslog(LOG_ERR, "shm_open failed for %s", shm_name_.c_str());
         return Status::SharedMemoryError;
     }
 
-    if (ftruncate(shm_fd, total_size_) == -1) {
+    if(ftruncate(shm_fd, total_size_) == -1) {
         syslog(LOG_ERR, "ftruncate failed");
         close(shm_fd);
         return Status::SharedMemoryError;
@@ -55,14 +61,18 @@ Status PosixSharedMemoryWriter::Initialize(const vHeader_t& header) {
     }
     close(shm_fd);
 
-    // Binary semaphore (initial value 1) protecting the frame_data + pixel
-    // buffer section from torn reads/writes between processes.
+    // semaphore to avoid race conditions between reader and writer
     sem_ = sem_open(sem_name_.c_str(), O_CREAT, 0666, 1);
-    if (sem_ == SEM_FAILED) {
+    if(sem_ == SEM_FAILED) {
         syslog(LOG_ERR, "sem_open failed for %s", sem_name_.c_str());
         return Status::SharedMemoryError;
     }
 
+    notify_ready_sem_ = sem_open(notify_ready_sem_name_.c_str(), O_CREAT, 0666, 0);
+    if(notify_ready_sem_ == SEM_FAILED) {
+        syslog(LOG_ERR, "sem_open failed for %s", notify_ready_sem_name_.c_str());
+        return Status::SharedMemoryError;
+    }
     // at this point is not strictly needed to protect the write
     std::memcpy(map_, &header, sizeof(header));
 
@@ -75,7 +85,7 @@ Status PosixSharedMemoryWriter::Initialize(const vHeader_t& header) {
 Status PosixSharedMemoryWriter::WriteFrame(const vFrameData_t& frame_data,
                                             const uint8_t* pixel_data,
                                             size_t pixel_data_size) {
-    if (!initialized_) {
+    if(!initialized_) {
         return Status::SharedMemoryError;
     }
     
@@ -84,6 +94,7 @@ Status PosixSharedMemoryWriter::WriteFrame(const vFrameData_t& frame_data,
     std::memcpy(GetPixelBufferPtr(), pixel_data, pixel_data_size);
     sem_post(sem_);
 
+    sem_post(notify_ready_sem_);
     return Status::OK;
 }
 

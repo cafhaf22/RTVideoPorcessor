@@ -10,6 +10,7 @@ enum class Status {
     InvalidFormat,
     SharedMemoryError,
     ErrorProcessingFrame,
+    Timeout,
 };
 
 struct vHeader_t {
