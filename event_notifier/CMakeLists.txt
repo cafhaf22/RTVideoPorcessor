@@ -1,0 +1,3 @@
+add_executable(notifier event_notifier.cpp)
+
+target_link_libraries(notifier PRIVATE common_interfaces)
