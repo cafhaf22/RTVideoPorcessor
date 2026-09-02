@@ -1,7 +1,6 @@
 #ifndef VIDEO_PROCESSOR_H_
 #define VIDEO_PROCESSOR_H_
 
-#include <cstdint>
 #include <opencv2/opencv.hpp>
 #include "common/common.h"
 #include "common/ishared_memory_writer.h"

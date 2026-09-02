@@ -19,6 +19,7 @@ std::mutex g_cv_mutex;
 std::condition_variable g_cv;
 
 void SignalHandler(int signum) {
+    syslog(LOG_INFO, "Received signal: %d", signum);
     g_should_stop.store(true);
     g_cv.notify_one();
 }
@@ -32,7 +33,7 @@ VideoProcessor::VideoProcessor(ISharedMemoryWriter& writer) :
 }
 
 VideoProcessor::~VideoProcessor() {
-    // TODO
+    syslog(LOG_INFO, "Exiting video processor");
 }
 
 Status VideoProcessor::LoadVideoFile(const char* filepath)
