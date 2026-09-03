@@ -15,7 +15,7 @@
 namespace {
 constexpr const char* kSocketPath = "/tmp/event_sock.sock";
 std::atomic<bool> g_should_stop{false};
-std::atomic<bool> g_trigger_received{false};
+std::atomic<int16_t> g_pending_triggers{0};
 
 void SignalHandler(int signum) {
     syslog(LOG_INFO, "Received signal: %d", signum);
@@ -79,7 +79,7 @@ void ListenForTrigger(int sock_fd) {
             char buffer[256];
             ssize_t bytes_read = recv(notifier_fd, buffer, sizeof(buffer), 0);
             if (bytes_read > 0) {
-                g_trigger_received.store(true);
+                g_pending_triggers.fetch_add(1);
                 syslog(LOG_INFO, "Trigger received");
             } else {
                 break;  // client closed conenction or there wass an error
@@ -119,7 +119,7 @@ Status VideoClipper::Initialize(const char* filepath) {
     sock_fd_ = socket(AF_UNIX, SOCK_STREAM, 0);
     if(int err = errno; sock_fd_ == -1) {
         syslog(LOG_ERR, "Error creating socket, errono: %d", err);
-        return Status::Failure; // used for more generic errors
+        return Status::Failure; // used for generic errors
     }
 
     struct sockaddr_un sock_addr{};
@@ -140,68 +140,71 @@ Status VideoClipper::Initialize(const char* filepath) {
 }
 
 Status VideoClipper::ProcessAndClip() {
-    bool waiting_after_trigger = false;
-    std::deque<FrameCache> snapshot;
-    int64_t trigger_ts = 0;
+
     while(!g_should_stop.load()){
         // read the frame
         FrameCache frame_entry;
-        frame_entry.pixel_data.resize(header_.frame_size_bytes);
-        if(reader_.ReadFrame(frame_entry.frame_data, frame_entry.pixel_data.data(), header_.frame_size_bytes) != Status::OK) {
+        frame_entry.pixel_data = std::make_shared<std::vector<uint8_t>>(header_.frame_size_bytes);
+        if(reader_.ReadFrame(frame_entry.frame_data, frame_entry.pixel_data->data(), header_.frame_size_bytes) != Status::OK) {
             syslog(LOG_WARNING, "Error reading frame from shared memory space");
-            // This could an error or a timeout
+            // This could be an error or a timeout
             continue;
         }
         // add the entry to the cached frames deque
-        frame_cache_.push_back(std::move(frame_entry));
+        frame_cache_.push_back(frame_entry);
+
+
         // once the deque has reached the total of frames for 9 seconds pop the oldest element
         int64_t elapsed_ms = frame_cache_.back().frame_data.timestamp - frame_cache_.front().frame_data.timestamp;
         while(elapsed_ms >= 9000) {
             frame_cache_.pop_front();
-            // keep at most 9s of frames in the cache — discard the oldest ones
+            // keep at most 9s of frames in the cache - discard the oldest ones
             // once the window is exceeded
             if(frame_cache_.empty()) {
                 break;
             }
             elapsed_ms = frame_cache_.back().frame_data.timestamp - frame_cache_.front().frame_data.timestamp;
         }
-    
-        // still need to wait for the 6s of video that hasn't been shared
-        // if the event has been trigger and we are not waiting then
-        // we need to wait the 6s
-        if(g_trigger_received.load() && !waiting_after_trigger) {
-            g_trigger_received.store(false);
-            // create a snapshot of what we have in the cache
-            snapshot = std::move(frame_cache_);
-            frame_cache_.clear();
-            trigger_ts = frame_entry.frame_data.timestamp;
-            waiting_after_trigger = true;
+
+        // check for pending triggers and create their own copy of the snapshot pointint at the main frame cache
+        int16_t pending = g_pending_triggers.exchange(0); // this will reset g_pending_triggers to 0 
+        for(int16_t i = 0; i < pending; i++) {
+            PendingClip new_clip;
+            new_clip.snapshot = frame_cache_; // cheap copy thanks to shared_ptr
+            new_clip.trigger_ts = frame_entry.frame_data.timestamp;
+            pending_clips_.push_back(std::move(new_clip)); // move it so the shared_ptr usse count does not increase
         }
-        else if(waiting_after_trigger) {
-            int64_t elapsed_since_trigger = frame_entry.frame_data.timestamp - trigger_ts;
+
+        // check every pending clip, if the 6s window after trigger is completed
+        // then generate its own video and remove it from the list
+        for(auto it = pending_clips_.begin(); it != pending_clips_.end();) {
+            int64_t elapsed_since_trigger = frame_entry.frame_data.timestamp - it->trigger_ts;
             if(elapsed_since_trigger >= 6000) {
                 // combine the snapshot with the 6s of frames stored after trigger
-                std::deque<FrameCache> clip = std::move(snapshot);
-                for(auto& frame: frame_cache_) {
-                    clip.push_back(std::move(frame));
+                std::deque<FrameCache> clip = it->snapshot; // it will increase the use count reference of the shared ptr but it will be out of scope fast
+                for(auto& frame: frame_cache_) { // we still check the cache because is our source of true
+                    // but only do it for every clip after their trigger timestamp
+                    if(frame.frame_data.timestamp > it->trigger_ts) {
+                        clip.push_back(frame);
+                    }
                 }
-                //Create teh video clip
-                GenerateVideoClip(std::move(clip), trigger_ts);
-
-                // clean the cache and the snapshot
-                frame_cache_.clear();
-                snapshot.clear();
-                waiting_after_trigger = false;
+                 //Create teh video clip
+                GenerateVideoClip(clip, it->trigger_ts);
+                it = pending_clips_.erase(it);
+            }
+            else {
+                ++it; // after dispatching a clip now increase the iterator
             }
         }
     }
+
     if (listener_thread_.joinable()) {
         listener_thread_.join();
     }
     return Status::OK;
 }
 
-Status VideoClipper::GenerateVideoClip(std::deque<FrameCache>&& clip_frames, const int64_t trigger_ts) const {
+Status VideoClipper::GenerateVideoClip(const std::deque<FrameCache>& clip_frames, const int64_t trigger_ts) const {
     // Check that there is something int the deque
     if(clip_frames.empty()) {
         syslog(LOG_WARNING, "No frames to generate video clip");
@@ -222,7 +225,7 @@ Status VideoClipper::GenerateVideoClip(std::deque<FrameCache>&& clip_frames, con
     // write the frames using opencv VideoWriter to create the file
     for (const auto& c_frame : clip_frames) {
         cv::Mat frame(header_.height, header_.width, CV_8UC3,
-                        const_cast<uint8_t*>(c_frame.pixel_data.data()));
+                        const_cast<uint8_t*>(c_frame.pixel_data->data()));
         writer.write(frame);
     }
 

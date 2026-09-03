@@ -11,7 +11,8 @@ share it in real time via shared memory, and generate 15-second clips
   frame rate of the video.
 - **Video Clipper**: reads frames from the shared space (S) and, upon
   receiving a trigger event via socket (E), generates a 15-second .mp4
-  clip.
+  clip. Supports multiple concurrent/overlapping triggers, each
+  generating its own independent clip.
 - **Event Notifier**: interactive program that sends an event to the
   Video Clipper every time the user presses 'e'.
 - **CPU Watcher**: monitors CPU and memory usage of the Video Clipper
@@ -28,6 +29,7 @@ All programs shut down gracefully on Ctrl+C (SIGINT).
 - pthread (included with the system)
 - `socat` (optional — only needed for manually simulating a trigger
   without the Event Notifier — `sudo apt install socat`)
+- At least ~1-2GB of free RAM recommended (see note below)
 
 ## Build
 
@@ -73,7 +75,15 @@ indefinitely, sharing frames through shared memory
 Reads frames from shared memory and listens on a UNIX socket
 (`/tmp/event_sock.sock`) for trigger events. Generates a 15-second
 `.mp4` clip in `<output_directory>` for each trigger received,
-named after the trigger's timestamp (in milliseconds).
+named after that trigger's timestamp (in milliseconds). Multiple
+triggers can be in progress at once, each producing its own clip.
+
+> **Memory note:** each in-progress clip temporarily holds its own
+> snapshot of the last ~9s of video in memory (see Key Architecture
+> Decisions). On systems with limited free RAM, closing memory-heavy
+> applications (e.g. browsers) before running the full pipeline is
+> recommended, especially when testing several triggers in quick
+> succession.
 
 ### Event Notifier
 
@@ -115,7 +125,7 @@ ps aux | grep vclipper   # note the PID
 ```
 
 Check `/tmp/clips` for the generated `.mp4` files, and use
-`journalctl -t VideoProcessor -t VideoClipper -t EventNotifier -f`
+`journalctl -t VideoProcessor -t VideoClipper -t EventNotifier -t CpuWatcher -f`
 to follow the programs' logs together.
 
 ### Manually testing Video Processor + Video Clipper without the Event Notifier
@@ -175,4 +185,53 @@ clip was generated before shutting both programs down.
 
 ## Key architecture decisions
 
-*(Section in progress — will be filled in from `doc/design_notes.md`.)*
+Full rationale, alternatives considered, and validation details for
+every decision below live in [`doc/design_notes.md`](doc/design_notes.md).
+Highlights:
+
+- **IPC (shared memory)**: POSIX (`shm_open`/`mmap`) over Boost.Interprocess
+  — no cross-platform requirement, fewer dependencies, more control.
+  `ISharedMemoryWriter`/`Reader` interfaces (SOLID: DIP + ISP) let each
+  side depend only on the operations it actually needs, and allow
+  mocking in tests.
+- **Synchronization between processes**: two named POSIX semaphores —
+  one binary mutex protecting the shared frame data from torn
+  reads/writes, and one binary "frame ready" semaphore so
+  `VideoClipper` blocks until a genuinely new frame exists, instead of
+  polling and reading duplicates (this polling issue caused a real OOM
+  crash during testing, since fixed).
+- **Clocks**: `steady_clock` for internal loop timing (frame-rate
+  pacing, no drift accumulation); `system_clock` for any timestamp
+  that must be compared across processes (frame timestamps vs. the
+  Event Notifier's trigger time) — a monotonic clock's epoch isn't
+  guaranteed comparable between processes.
+- **VideoClipper's 9s circular buffer**: a `std::deque` window
+  maintained continuously, independent of any trigger. On a trigger,
+  its contents are copied (not moved) into a `PendingClip`, so the
+  main buffer keeps running uninterrupted for future triggers.
+- **Multiple concurrent triggers**: each trigger gets its own
+  `PendingClip` (its own 9s snapshot + independent 6s timer), tracked
+  in a `std::vector` — not a single "one at a time" flag. Frame pixel
+  data uses `std::shared_ptr` so overlapping snapshots reference the
+  same underlying buffer instead of duplicating it; the buffer is
+  freed automatically once nothing references it anymore.
+- **Non-blocking waits with timeouts**: any potentially indefinite
+  wait (socket `accept()`/`recv()`, semaphore waits, keyboard input)
+  uses a short timeout so `g_should_stop` gets re-checked regularly —
+  this is what makes Ctrl+C shutdown clean and fast (<1s) in every
+  program, in every tested scenario.
+- **Event Notifier key detection**: raw terminal mode (`termios`,
+  `VMIN=0`/`VTIME=1`) instead of canonical mode, so `'e'` triggers
+  instantly without pressing Enter. `ISIG` is left untouched so
+  Ctrl+C still works normally.
+- **CPUWatcher**: takes a PID as an argument (not by name) — consistent
+  with standard Unix tools like `kill`. Reads directly from `/proc/`;
+  CPU% requires two time-accumulator samples a second apart (a
+  proportion of two deltas), since `/proc/stat` gives cumulative
+  jiffies, not an instantaneous percentage.
+- **Known trade-off**: each in-progress clip holds roughly ~250MB of
+  frame data in memory (inherent to the 9s lookback requirement, not
+  reducible without violating the spec). Under heavy concurrent
+  triggers *and* an already memory-constrained system, this can
+  contribute to system-wide memory pressure — validated and documented
+  in `doc/design_notes.md`.
