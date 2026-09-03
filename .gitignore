@@ -1,0 +1,7 @@
+build/
+*.o
+*.out
+*.mp4
+.vscode/
+.idea/
+*.example
