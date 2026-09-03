@@ -1,0 +1,3 @@
+add_executable(cpuwatcher cpu_watcher.cpp)
+
+target_link_libraries(cpuwatcher PRIVATE common_interfaces)
