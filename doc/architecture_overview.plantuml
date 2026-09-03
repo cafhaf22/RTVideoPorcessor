@@ -1,0 +1,44 @@
+@startuml architecture_overview
+skinparam backgroundColor white
+skinparam defaultTextAlignment center
+skinparam componentBackgroundColor #E8F4FF
+
+title Derq Challenge -- System Architecture
+
+component "VideoProcessor" as VP
+component "VideoClipper" as VC
+component "EventNotifier" as EN
+component "CPUWatcher" as CW
+
+database "Shared Memory\n/derq_video_shm" as SHM #FFF3D0
+queue "UNIX Socket\n/tmp/event_sock.sock" as SOCK #D8E8FF
+
+VP -down-> SHM : WriteFrame()\n(sem_ mutex +\nframe_ready_sem_ signal)
+SHM -down-> VC : ReadFrame()\n(waits on\nframe_ready_sem_)
+
+EN -down-> SOCK : send() on 'e'\n(termios raw mode,\ninstant, no Enter)
+SOCK -down-> VC : recv()\n(dedicated thread)
+
+CW .right.> VC : reads /proc/PID/*\n(CPU % + memory,\nno IPC)
+
+note right of VC
+  frame_cache_: rolling 9s buffer (deque)
+
+  pending_clips_: one entry per active
+  trigger, each with its own 9s snapshot
+  + independent 6s timer -- supports
+  multiple concurrent triggers
+
+  shared_ptr on pixel data: overlapping
+  snapshots reference the same buffer,
+  no duplication
+end note
+
+note bottom
+  All 4 programs shut down cleanly on Ctrl+C:
+  every blocking wait (semaphores, select(),
+  termios, sleep_until) uses a short timeout
+  so the stop signal is checked regularly.
+end note
+
+@enduml
