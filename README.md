@@ -235,3 +235,28 @@ Highlights:
   triggers *and* an already memory-constrained system, this can
   contribute to system-wide memory pressure — validated and documented
   in `doc/design_notes.md`.
+
+## References
+
+### AI Tool Usage
+
+This project was developed with assistance from Claude (Anthropic)
+for design discussions, debugging, and clarification of concepts. 
+All architectural decisions, trade-off analysis, and
+final implementation were reviewed, understood, and validated by the
+author — see `doc/design_notes.md` for the reasoning behind each
+decision. AI-suggested code was never accepted without understanding
+and, where relevant, correcting it.
+
+### Other Resources
+
+- [cppreference.com](https://en.cppreference.com/) — C++ standard
+library reference (std::chrono, std::deque, std::shared_ptr, etc.)
+- [OpenCV documentation](https://docs.opencv.org/) — VideoCapture,
+VideoWriter, Mat
+- Linux man pages (`man 2`, `man 3`) — shm_open, mmap, sem_open,
+socket, select, termios, and related POSIX system calls
+- [Beej's Guide to Network Programming](https://beej.us/guide/bgnet/html/) — sockets reference
+- Robert Love, *Linux System Programming*, 2nd ed., O'Reilly Media,
+2007 — general reference for Linux system calls and process/IPC
+concepts
