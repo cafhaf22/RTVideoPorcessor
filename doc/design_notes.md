@@ -1,4 +1,4 @@
-# Derq Systems Challenge — Architecture & Design Notes
+# Systems Challenge — Architecture & Design Notes
 
 ## Shared Memory (S) — Writer/Reader
 

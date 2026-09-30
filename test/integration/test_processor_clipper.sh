@@ -3,7 +3,7 @@
 set -e
 
 VIDEO_PATH="$1"
-OUTPUT_DIR="/tmp/derq_integration_test"
+OUTPUT_DIR="/tmp/integration_test"
 BUILD_DIR="$(dirname "$0")/../../build"
 
 if [ -z "$VIDEO_PATH" ]; then
@@ -15,8 +15,8 @@ fi
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
 rm -f /tmp/event_sock.sock
-rm -f /dev/shm/derq_video_shm
-rm -f /dev/shm/sem.derq_challenge_sem
+rm -f /dev/shm/video_shm
+rm -f /dev/shm/sem.challenge_sem
 rm -f /dev/shm/sem.notify_ready_sem
 
 echo "Starting Video Processor..."

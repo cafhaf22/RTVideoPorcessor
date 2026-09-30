@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(DerqChallenge)
+project(RTVideoProcessor)
 
 find_package(OpenCV REQUIRED)
 

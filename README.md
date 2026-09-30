@@ -1,4 +1,4 @@
-# Derq Systems Software Engineer Challenge
+# Systems Software Engineer Challenge
 
 ## Description
 
@@ -64,7 +64,7 @@ cmake --build . --target test_shared_memory
 
 The video must be an existing `.mp4` file. The program runs
 indefinitely, sharing frames through shared memory
-(`/derq_video_shm`), until the video ends or Ctrl+C is received.
+(`/video_shm`), until the video ends or Ctrl+C is received.
 
 ### Video Clipper
 

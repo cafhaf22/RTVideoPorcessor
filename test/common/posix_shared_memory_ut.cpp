@@ -15,7 +15,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-constexpr const char* kTestShmName = "/derq_test_shm";
+constexpr const char* kTestShmName = "/test_shm";
 constexpr const uint16_t kChannels = 3;
 
 class PosixSharedMemoryTest : public ::testing::Test {

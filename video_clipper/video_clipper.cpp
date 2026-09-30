@@ -242,7 +242,7 @@ int main(int argc, char* argv[]) {
 
     std::signal(SIGINT, SignalHandler);
 
-    PosixSharedMemoryReader reader("/derq_video_shm");
+    PosixSharedMemoryReader reader("/video_shm");
     VideoClipper clipper(reader);
 
     if(clipper.Initialize(argv[1]) != Status::OK) {

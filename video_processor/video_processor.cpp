@@ -119,7 +119,7 @@ int main(int argc, char* argv[]) {
 
     std::signal(SIGINT, SignalHandler);
 
-    PosixSharedMemoryWriter writer("/derq_video_shm");
+    PosixSharedMemoryWriter writer("/video_shm");
     VideoProcessor processor(writer);
 
     if (processor.LoadVideoFile(argv[1]) != Status::OK) {

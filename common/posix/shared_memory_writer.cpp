@@ -7,7 +7,7 @@
 #include <syslog.h>
 
 PosixSharedMemoryWriter::PosixSharedMemoryWriter(const std::string& shm_name)
-    : shm_name_(shm_name), sem_name_("/derq_challenge_sem"), notify_ready_sem_name_("/notify_ready_sem"), 
+    : shm_name_(shm_name), sem_name_("/challenge_sem"), notify_ready_sem_name_("/notify_ready_sem"), 
     map_(nullptr), total_size_(0), initialized_(false), sem_(nullptr), 
     notify_ready_sem_(nullptr) {
 }
