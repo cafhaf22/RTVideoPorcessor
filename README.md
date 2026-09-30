@@ -238,15 +238,6 @@ Highlights:
 
 ## References
 
-### AI Tool Usage
-
-This project was developed with assistance from Claude (Anthropic)
-for design discussions, debugging, and clarification of concepts. 
-All architectural decisions, trade-off analysis, and
-final implementation were reviewed, understood, and validated by the
-author — see `doc/design_notes.md` for the reasoning behind each
-decision. AI-suggested code was never accepted without understanding
-and, where relevant, correcting it.
 
 ### Other Resources
 
